@@ -50,6 +50,13 @@ public class GlobalExceptionHandler {
         return Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse));
     }
     
+    @ExceptionHandler(EmailServiceException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleEmailServiceException(EmailServiceException ex) {
+        ErrorResponse errorResponse = new ErrorResponse("Email service error", HttpStatus.SERVICE_UNAVAILABLE.value());
+        log.error("Email service error: {}", ex.getMessage(), ex);
+        return Mono.just(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(errorResponse));
+    }
+    
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<ErrorResponse>> handleGenericException(Exception ex) {
         ErrorResponse errorResponse = new ErrorResponse("Internal server error", HttpStatus.INTERNAL_SERVER_ERROR.value());

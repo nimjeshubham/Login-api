@@ -37,6 +37,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("com.github.ben-manes.caffeine:caffeine")
     implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j:3.1.0")
     compileOnly("org.projectlombok:lombok")
     runtimeOnly("org.postgresql:postgresql")
     runtimeOnly("org.postgresql:r2dbc-postgresql")
@@ -46,9 +47,36 @@ dependencies {
     testImplementation("io.projectreactor:reactor-test")
     testImplementation("org.testcontainers:postgresql")
     testImplementation("org.testcontainers:r2dbc")
+    testImplementation("org.testcontainers:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+// Security scanning
+tasks.register("securityCheck") {
+    doLast {
+        println("Run: ./gradlew dependencyCheckAnalyze for security scan")
+    }
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("spring.profiles.active", "test")
+    maxHeapSize = "1g"
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
+}
+
+// Production build optimization
+tasks.jar {
+    enabled = false
+    archiveClassifier = ""
+}
+
+tasks.bootJar {
+    enabled = true
+    archiveClassifier = ""
+    layered {
+        enabled = true
+    }
 }

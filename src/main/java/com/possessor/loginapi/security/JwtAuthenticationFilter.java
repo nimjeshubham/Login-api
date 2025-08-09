@@ -1,7 +1,11 @@
 package com.possessor.loginapi.security;
 
+
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.NonNullApi;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -10,16 +14,19 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
+
 import java.util.Collections;
 
 @Component
 @RequiredArgsConstructor
+
 public class JwtAuthenticationFilter implements WebFilter {
     
     private final JwtUtil jwtUtil;
     
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+
+    public Mono<Void> filter(@NotNull ServerWebExchange exchange, @NonNull WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
         
         if (path.startsWith("/api/auth/") || path.startsWith("/actuator/")) {

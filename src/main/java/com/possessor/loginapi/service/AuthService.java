@@ -1,6 +1,11 @@
 package com.possessor.loginapi.service;
 
 import com.possessor.loginapi.client.TokenClient;
+import com.possessor.loginapi.constants.AuthConstants;
+import com.possessor.loginapi.constants.ErrorMessages;
+import com.possessor.loginapi.constants.LogMessages;
+import com.possessor.loginapi.constants.StatusMessages;
+import com.possessor.loginapi.constants.SuccessMessages;
 import com.possessor.loginapi.dto.*;
 import com.possessor.loginapi.entity.User;
 import com.possessor.loginapi.exception.AuthenticationException;
@@ -32,18 +37,18 @@ public class AuthService {
     private final TokenClient tokenClient;
     
     public Mono<MessageResponse> register(RegisterRequest request) {
-        log.info("Registration attempt for username: {}", request.getUsername());
+        log.info(LogMessages.REGISTRATION_ATTEMPT, request.getUsername());
         
         return userRepository.existsByUsername(request.getUsername())
                 .flatMap(exists -> {
                     if (exists) {
-                        return Mono.error(new UserAlreadyExistsException("Username already exists"));
+                        return Mono.error(new UserAlreadyExistsException(ErrorMessages.USERNAME_EXISTS_ERROR));
                     }
                     return userRepository.existsByEmail(request.getEmail());
                 })
                 .flatMap(exists -> {
                     if (exists) {
-                        return Mono.error(new UserAlreadyExistsException("Email already exists"));
+                        return Mono.error(new UserAlreadyExistsException(ErrorMessages.EMAIL_EXISTS_ERROR));
                     }
                     
                     User user = new User();
@@ -56,21 +61,21 @@ public class AuthService {
                     return userRepository.save(user);
                 })
                 .map(user -> {
-                    log.info("User registered successfully: {}", user.getUsername());
-                    return new MessageResponse("User created successfully");
+                    log.info(LogMessages.USER_REGISTERED_SUCCESS, user.getUsername());
+                    return new MessageResponse(SuccessMessages.USER_CREATED_SUCCESS);
                 })
-                .retryWhen(Retry.backoff(3, Duration.ofMillis(100)))
-                .doOnError(error -> log.error("Registration failed for username: {}", request.getUsername(), error));
+                .retryWhen(Retry.backoff(AuthConstants.MAX_RETRY_ATTEMPTS, Duration.ofMillis(AuthConstants.RETRY_BACKOFF_MILLIS)))
+                .doOnError(error -> log.error(LogMessages.REGISTRATION_FAILED, request.getUsername(), error));
     }
     
     public Mono<AuthResponse> login(LoginRequest request) {
-        log.info("Login attempt for username: {}", request.getUsername());
+        log.info(LogMessages.LOGIN_ATTEMPT, request.getUsername());
         
         return userRepository.findByUsername(request.getUsername().toLowerCase())
-                .switchIfEmpty(Mono.error(new AuthenticationException("Invalid credentials")))
+                .switchIfEmpty(Mono.error(new AuthenticationException(ErrorMessages.INVALID_CREDENTIALS_ERROR)))
                 .flatMap(user -> {
                     if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-                        log.info("User credentials validated successfully: {}", user.getUsername());
+                        log.info(LogMessages.CREDENTIALS_VALIDATED, user.getUsername());
                         return tokenClient.generateToken(user.getUsername(), user.getEmail())
                                 .map(tokenResponse -> new AuthResponse(
                                     user.getUsername(),
@@ -81,13 +86,13 @@ public class AuthService {
                                     tokenResponse.getExpiresIn()
                                 ));
                     }
-                    log.warn("Invalid password for username: {}", request.getUsername());
-                    return Mono.error(new AuthenticationException("Invalid credentials"));
+                    log.warn(LogMessages.INVALID_PASSWORD, request.getUsername());
+                    return Mono.error(new AuthenticationException(ErrorMessages.INVALID_CREDENTIALS_ERROR));
                 })
-                .doOnError(error -> log.error("Login failed for username: {}", request.getUsername(), error.getMessage()));
+                .doOnError(error -> log.error(LogMessages.LOGIN_FAILED, request.getUsername(), error.getMessage()));
     }
     
-    @Cacheable("users")
+    @Cacheable(AuthConstants.USERS_CACHE)
     public Mono<User> findByUsername(String username) {
         return userRepository.findByUsername(username.toLowerCase());
     }
@@ -97,23 +102,23 @@ public class AuthService {
                 .flatMap(user -> {
                     String resetToken = UUID.randomUUID().toString();
                     user.setResetToken(resetToken);
-                    user.setResetTokenExpiry(LocalDateTime.now().plusHours(1));
+                    user.setResetTokenExpiry(LocalDateTime.now().plusHours(AuthConstants.RESET_TOKEN_EXPIRY_HOURS));
                     
                     return userRepository.save(user)
                             .then(emailService.sendPasswordResetEmail(user.getEmail(), resetToken));
                 })
-                .then(Mono.just(new MessageResponse("Password reset email sent")))
-                .onErrorReturn(new MessageResponse("If email exists, reset link will be sent"))
-                .doOnSuccess(response -> log.info("Password reset requested for email: {}", email));
+                .then(Mono.just(new MessageResponse(SuccessMessages.PASSWORD_RESET_EMAIL_SENT)))
+                .onErrorReturn(new MessageResponse(SuccessMessages.PASSWORD_RESET_EMAIL_FALLBACK))
+                .doOnSuccess(response -> log.info(LogMessages.PASSWORD_RESET_REQUESTED, email));
     }
     
-    @CacheEvict(value = "users", allEntries = true)
+    @CacheEvict(value = AuthConstants.USERS_CACHE, allEntries = true)
     public Mono<MessageResponse> resetPassword(String token, String newPassword) {
         return userRepository.findByResetToken(token)
-                .switchIfEmpty(Mono.error(new AuthenticationException("Invalid or expired reset token")))
+                .switchIfEmpty(Mono.error(new AuthenticationException(ErrorMessages.INVALID_RESET_TOKEN_ERROR)))
                 .flatMap(user -> {
                     if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-                        return Mono.error(new AuthenticationException("Reset token has expired"));
+                        return Mono.error(new AuthenticationException(ErrorMessages.RESET_TOKEN_EXPIRED_ERROR));
                     }
                     
                     user.setPassword(passwordEncoder.encode(newPassword));
@@ -123,8 +128,8 @@ public class AuthService {
                     
                     return userRepository.save(user);
                 })
-                .map(user -> new MessageResponse("Password reset successfully"))
-                .doOnSuccess(response -> log.info("Password reset completed for token: {}", token));
+                .map(user -> new MessageResponse(SuccessMessages.PASSWORD_RESET_SUCCESS))
+                .doOnSuccess(response -> log.info(LogMessages.PASSWORD_RESET_COMPLETED, token));
     }
     
     public Mono<AuthResponse> refreshToken(String refreshToken) {
@@ -141,30 +146,30 @@ public class AuthService {
                                 tokenResponse.getExpiresIn()
                             ));
                 })
-                .switchIfEmpty(Mono.error(new AuthenticationException("User not found")));
+                .switchIfEmpty(Mono.error(new AuthenticationException(ErrorMessages.USER_NOT_FOUND_ERROR)));
     }
     
     public Mono<MessageResponse> logout(String token) {
         // In a real implementation, you would add the token to a blacklist
-        return Mono.just(new MessageResponse("Logged out successfully"));
+        return Mono.just(new MessageResponse(SuccessMessages.LOGOUT_SUCCESS));
     }
     
     public Mono<AvailabilityResponse> checkUsernameAvailability(String username) {
         return userRepository.existsByUsername(username.toLowerCase())
                 .map(exists -> new AvailabilityResponse(!exists, 
-                    exists ? "Username is already taken" : "Username is available"));
+                    exists ? StatusMessages.USERNAME_TAKEN : StatusMessages.USERNAME_AVAILABLE));
     }
     
     public Mono<AvailabilityResponse> checkEmailAvailability(String email) {
         return userRepository.existsByEmail(email.toLowerCase())
                 .map(exists -> new AvailabilityResponse(!exists,
-                    exists ? "Email is already registered" : "Email is available"));
+                    exists ? StatusMessages.EMAIL_REGISTERED : StatusMessages.EMAIL_AVAILABLE));
     }
     
-    @CacheEvict(value = "users", allEntries = true)
+    @CacheEvict(value = AuthConstants.USERS_CACHE, allEntries = true)
     public Mono<MessageResponse> verifyEmail(String token) {
         return userRepository.findByVerificationToken(token)
-                .switchIfEmpty(Mono.error(new AuthenticationException("Invalid verification token")))
+                .switchIfEmpty(Mono.error(new AuthenticationException(ErrorMessages.INVALID_VERIFICATION_TOKEN_ERROR)))
                 .flatMap(user -> {
                     user.setEmailVerified(true);
                     user.setVerificationToken(null);
@@ -172,13 +177,13 @@ public class AuthService {
                     
                     return userRepository.save(user);
                 })
-                .map(user -> new MessageResponse("Email verified successfully"))
-                .doOnSuccess(response -> log.info("Email verified for token: {}", token));
+                .map(user -> new MessageResponse(SuccessMessages.EMAIL_VERIFIED_SUCCESS))
+                .doOnSuccess(response -> log.info(LogMessages.EMAIL_VERIFIED, token));
     }
     
     public Mono<MessageResponse> resendVerificationEmail(String email) {
         return userRepository.findByEmail(email.toLowerCase())
-                .switchIfEmpty(Mono.error(new AuthenticationException("Email not found")))
+                .switchIfEmpty(Mono.error(new AuthenticationException(AuthConstants.USER_NOT_FOUND_ERROR)))
                 .flatMap(user -> {
                     if (user.isEmailVerified()) {
                         return Mono.just(new MessageResponse("Email is already verified"));
@@ -186,10 +191,13 @@ public class AuthService {
                     
                     String verificationToken = UUID.randomUUID().toString();
                     user.setVerificationToken(verificationToken);
+                    user.setUpdatedAt(LocalDateTime.now());
                     
                     return userRepository.save(user)
-                            .then(Mono.just(new MessageResponse("Verification email sent")));
+                            .then(emailService.sendVerificationEmail(user.getEmail(), verificationToken));
                 })
+                .then(Mono.just(new MessageResponse(AuthConstants.VERIFICATION_EMAIL_SENT)))
+                .onErrorReturn(new MessageResponse(AuthConstants.VERIFICATION_EMAIL_SENT))
                 .doOnSuccess(response -> log.info("Verification email resent for: {}", email));
     }
 }
