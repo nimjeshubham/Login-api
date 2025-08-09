@@ -43,6 +43,14 @@ public class JwtUtil {
         }
     }
     
+    public boolean validateToken(String token) {
+        return isTokenValid(token);
+    }
+    
+    public String getUsernameFromToken(String token) {
+        return extractUsername(token);
+    }
+    
     private Claims extractClaims(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())

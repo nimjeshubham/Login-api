@@ -7,6 +7,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -18,6 +19,11 @@ public class User {
     private String username;
     private String email;
     private String password;
+    private boolean emailVerified = false;
+    private String verificationToken;
+    private String resetToken;
+    private LocalDateTime resetTokenExpiry;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private List<String> roles;
 }
