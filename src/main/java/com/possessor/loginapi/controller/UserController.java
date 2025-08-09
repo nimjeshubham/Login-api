@@ -1,5 +1,7 @@
 package com.possessor.loginapi.controller;
 
+import com.possessor.loginapi.constants.ApiEndpoints;
+import com.possessor.loginapi.constants.MetricsConstants;
 import com.possessor.loginapi.dto.ChangePasswordRequest;
 import com.possessor.loginapi.dto.MessageResponse;
 import com.possessor.loginapi.dto.UpdateProfileRequest;
@@ -16,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/api/user")
+@RequestMapping(ApiEndpoints.USER_BASE)
 @RequiredArgsConstructor
 @Slf4j
 public class UserController {
@@ -24,8 +26,8 @@ public class UserController {
     private final AuthService authService;
     private final UserService userService;
     
-    @GetMapping("/profile")
-    @Timed(value = "user.profile", description = "Time taken to get user profile")
+    @GetMapping(ApiEndpoints.USER_PROFILE)
+    @Timed(value = MetricsConstants.USER_PROFILE, description = MetricsConstants.USER_PROFILE_DESC)
     public Mono<ResponseEntity<User>> getProfile(Authentication authentication) {
         String username = authentication.getName();
         return authService.findByUsername(username)
@@ -38,8 +40,8 @@ public class UserController {
                 .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
     }
     
-    @PutMapping("/profile")
-    @Timed(value = "user.update.profile", description = "Time taken to update user profile")
+    @PutMapping(ApiEndpoints.USER_PROFILE)
+    @Timed(value = MetricsConstants.USER_UPDATE_PROFILE, description = MetricsConstants.USER_UPDATE_PROFILE_DESC)
     public Mono<ResponseEntity<MessageResponse>> updateProfile(
             @Valid @RequestBody UpdateProfileRequest request,
             Authentication authentication) {
@@ -48,8 +50,8 @@ public class UserController {
                 .map(ResponseEntity::ok);
     }
     
-    @PutMapping("/password")
-    @Timed(value = "user.change.password", description = "Time taken to change password")
+    @PutMapping(ApiEndpoints.USER_PASSWORD)
+    @Timed(value = MetricsConstants.USER_CHANGE_PASSWORD, description = MetricsConstants.USER_CHANGE_PASSWORD_DESC)
     public Mono<ResponseEntity<MessageResponse>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication authentication) {
@@ -58,8 +60,8 @@ public class UserController {
                 .map(ResponseEntity::ok);
     }
     
-    @DeleteMapping("/account")
-    @Timed(value = "user.delete.account", description = "Time taken to delete account")
+    @DeleteMapping(ApiEndpoints.USER_ACCOUNT)
+    @Timed(value = MetricsConstants.USER_DELETE_ACCOUNT, description = MetricsConstants.USER_DELETE_ACCOUNT_DESC)
     public Mono<ResponseEntity<MessageResponse>> deleteAccount(Authentication authentication) {
         String username = authentication.getName();
         return userService.deleteAccount(username)

@@ -35,19 +35,20 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
     private final TokenClient tokenClient;
+    private final SessionService sessionService;
     
     public Mono<MessageResponse> register(RegisterRequest request) {
         log.info(LogMessages.REGISTRATION_ATTEMPT, request.getUsername());
         
         return userRepository.existsByUsername(request.getUsername())
                 .flatMap(exists -> {
-                    if (exists) {
+                    if (Boolean.TRUE.equals(exists)) {
                         return Mono.error(new UserAlreadyExistsException(ErrorMessages.USERNAME_EXISTS_ERROR));
                     }
                     return userRepository.existsByEmail(request.getEmail());
                 })
                 .flatMap(exists -> {
-                    if (exists) {
+                    if (Boolean.TRUE.equals(exists)) {
                         return Mono.error(new UserAlreadyExistsException(ErrorMessages.EMAIL_EXISTS_ERROR));
                     }
                     
@@ -150,20 +151,26 @@ public class AuthService {
     }
     
     public Mono<MessageResponse> logout(String token) {
-        // In a real implementation, you would add the token to a blacklist
-        return Mono.just(new MessageResponse(SuccessMessages.LOGOUT_SUCCESS));
+        return sessionService.blacklistToken(token, Duration.ofHours(24))
+            .then(Mono.fromCallable(() -> {
+                String username = jwtUtil.getUsernameFromToken(token);
+                return sessionService.invalidateUserSession(username);
+            }).flatMap(mono -> mono))
+            .then(Mono.just(new MessageResponse(SuccessMessages.LOGOUT_SUCCESS)))
+            .doOnSuccess(response -> log.info("User logged out successfully"))
+            .onErrorReturn(new MessageResponse(SuccessMessages.LOGOUT_SUCCESS));
     }
     
     public Mono<AvailabilityResponse> checkUsernameAvailability(String username) {
         return userRepository.existsByUsername(username.toLowerCase())
-                .map(exists -> new AvailabilityResponse(!exists, 
-                    exists ? StatusMessages.USERNAME_TAKEN : StatusMessages.USERNAME_AVAILABLE));
+                .map(exists -> new AvailabilityResponse(!exists,
+                        Boolean.TRUE.equals(exists) ? StatusMessages.USERNAME_TAKEN : StatusMessages.USERNAME_AVAILABLE));
     }
     
     public Mono<AvailabilityResponse> checkEmailAvailability(String email) {
         return userRepository.existsByEmail(email.toLowerCase())
                 .map(exists -> new AvailabilityResponse(!exists,
-                    exists ? StatusMessages.EMAIL_REGISTERED : StatusMessages.EMAIL_AVAILABLE));
+                        Boolean.TRUE.equals(exists) ? StatusMessages.EMAIL_REGISTERED : StatusMessages.EMAIL_AVAILABLE));
     }
     
     @CacheEvict(value = AuthConstants.USERS_CACHE, allEntries = true)
